@@ -1,0 +1,65 @@
+# Alpamayo 1.5 stage-1 SFT on nuReasoning (option B): full fine-tune of the VLM (vision x0.1 LR,
+# ZeRO-2, gradient checkpointing) on reasoning-trace CoT + discrete future-trajectory tokens.
+# Samples: artifacts/a15s1_index_train.json (13,910 frames with a Driving "Reasoning trace").
+# Copied into the recipe's configs/. Stage 2 then trains the expert with model.stage1_vlm_checkpoint_path.
+defaults:
+  - sft_base
+  - /models/ar1_5_base@model
+  - _self_
+
+model:
+  checkpoint_path: /path/to/cluster/scratch/nureasoning/models/a15_train_local
+
+data:
+  train_dataset:
+    _target_: a15ft_data.NuReasoningA15Dataset
+    _recursive_: false
+    local_dir: null
+    chunk_ids: null
+    use_default_keyframe: null
+    split: train
+    half: null
+    index_path: /path/to/cluster/scratch/nureasoning/artifacts/a15s1_index_train.json
+    vla_preprocess_args:
+      components_order: ["image", "traj_history", "prompt", "cot", "traj_future"]
+      components_prompt: ["cot", "traj_future"]
+      label_components: ["cot", "traj_future"]
+      generation_mode: false
+  val_dataset:
+    _target_: a15ft_data.NuReasoningA15Dataset
+    _recursive_: false
+    local_dir: null
+    chunk_ids: null
+    use_default_keyframe: null
+    split: train
+    half: null
+    index_path: /path/to/cluster/scratch/nureasoning/artifacts/a15s1_index_train.json
+    max_samples: 16
+    vla_preprocess_args:
+      components_order: ["image", "traj_history", "prompt", "cot", "traj_future"]
+      components_prompt: ["cot", "traj_future"]
+      label_components: ["cot", "traj_future"]
+      generation_mode: true
+
+paths:
+  output_dir: /path/to/cluster/scratch/nureasoning/runs_a15s1/all
+
+trainer:
+  lr_multiplier:
+    vlm.model.visual: 0.1
+  learning_rate: 1e-5
+  warmup_steps: 100
+  num_train_epochs: 2
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+  ddp_find_unused_parameters: false
+  dataloader_num_workers: 6
+  dataloader_prefetch_factor: 2
+  save_steps: 250
+  save_total_limit: 2
+
+performance:
+  zip_cache: false
+  collate_cache: false
+
+task_name: alpamayo_1_5_sft_stage1_nureasoning

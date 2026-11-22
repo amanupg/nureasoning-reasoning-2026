@@ -1,0 +1,53 @@
+# Alpamayo 1.5 stage-2 SFT on nuReasoning (our adapter). Copied into the recipe's configs/.
+# One run per half (out-of-fold): data.train_dataset.half=h0|h1, paths.output_dir=...
+defaults:
+  - sft_base
+  - /models/ar1_5_expert@model
+  - _self_
+
+model:
+  pretrained_model_name_or_path: /path/to/cluster/scratch/nureasoning/models/a15_train_local
+
+data:
+  train_dataset:
+    _target_: a15ft_data.NuReasoningA15Dataset
+    _recursive_: false
+    local_dir: null
+    chunk_ids: null
+    use_default_keyframe: null
+    split: train
+    half: h0
+    vla_preprocess_args:
+      generation_mode: false
+  val_dataset:
+    _target_: a15ft_data.NuReasoningA15Dataset
+    _recursive_: false
+    local_dir: null
+    chunk_ids: null
+    use_default_keyframe: null
+    split: train
+    half: h1
+    max_samples: 16
+    vla_preprocess_args:
+      generation_mode: true
+
+paths:
+  output_dir: /path/to/cluster/scratch/nureasoning/runs_a15ft/h0
+
+trainer:
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 1
+  num_train_epochs: 3
+  gradient_checkpointing: false
+  deepspeed: null
+  ddp_find_unused_parameters: true
+  dataloader_num_workers: 6
+  dataloader_prefetch_factor: 2
+  save_steps: 1000
+  save_total_limit: 3
+
+performance:
+  zip_cache: false
+  collate_cache: false
+
+task_name: alpamayo_1_5_sft_stage2_nureasoning

@@ -1,0 +1,14 @@
+diff --git a/recipes/alpamayo1_5_sft/train_hf.py b/recipes/alpamayo1_5_sft/train_hf.py
+index aba6486..c9bed82 100644
+--- a/recipes/alpamayo1_5_sft/train_hf.py
++++ b/recipes/alpamayo1_5_sft/train_hf.py
+@@ -104,7 +104,8 @@ def train(cfg: DictConfig) -> None:
+             include_hydra_config=True,
+         )
+ 
+-    trainer.train()
++    # [amanupg] resume after a Slurm time limit: +resume_from_checkpoint=<dir>
++    trainer.train(resume_from_checkpoint=cfg.get("resume_from_checkpoint", None))
+     if torch.distributed.is_initialized():
+         torch.distributed.destroy_process_group()
+ 

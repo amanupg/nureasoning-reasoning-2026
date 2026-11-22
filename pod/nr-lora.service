@@ -1,0 +1,10 @@
+[Unit]
+Description=nureasoning LoRA continuation (auto-resume after preemption)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/nr/w/vm_boot.sh
+Restart=no
+[Install]
+WantedBy=multi-user.target

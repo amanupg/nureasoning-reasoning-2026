@@ -1,0 +1,101 @@
+diff --git a/nureasoning/nuvla/models/data_loader.py b/nureasoning/nuvla/models/data_loader.py
+index f18a9d1..285d514 100644
+--- a/nureasoning/nuvla/models/data_loader.py
++++ b/nureasoning/nuvla/models/data_loader.py
+@@ -223,14 +223,40 @@ class NuReasoningVLADataset(Dataset):
+             if not ego_state_relpath:
+                 continue
+ 
++            # [nuReasoning challenge entry, amanupg] We ingested camera images for the
++            # key frames only. Keep a reasoning frame if its images (current + history)
++            # are on disk, else try the adjacent frame (+-1, 0.1 s): some clips annotate
++            # frames 31, 41, ..., 101 while images exist at 90/100. The sample then uses
++            # the image frame's ego state and timestamp with this reasoning text.
++            if os.environ.get("NUVLA_REQUIRE_IMAGES"):
++                def _has_images(fi):
++                    return all(
++                        0 <= i < len(frames)
++                        and all(os.path.isfile(os.path.join(clip_dir, p))
++                                for p in (frames[i].get("sensors", {}).get("cameras", {}) or {}).values())
++                        for i in [fi - k * hist_stride for k in range(self.config.num_history_steps + 1)]
++                    )
++                alt = next((fi for fi in (frame_idx, frame_idx - 1, frame_idx + 1) if _has_images(fi)), None)
++                if alt is None:
++                    continue
++                if alt != frame_idx:
++                    frame = frames[alt]
++                    frame_idx = alt
++                    ego_state_relpath = frame.get("ego_state", "")
++                    if not ego_state_relpath or frame_idx < min_history_frames:
++                        continue
++
+             self.samples.append({
+                 "clip_dir": clip_dir,
+                 "clip_name": clip_name,
+                 "frame_index": frame_idx,
+                 "timestamp_us": frame.get("timestamp_us", 0),
+                 "reasoning_file": reasoning_abs,
+-                "metadata": metadata,
+-                "frames": frames,
++                # [amanupg] NUVLA_LAZY_META: don't hold every clip's full metadata in every
++                # sample; forked loader workers copy-on-write it and host RAM runs out
++                # ("pin memory thread exited"). __getitem__ re-reads it from disk.
++                "metadata": None if os.environ.get("NUVLA_LAZY_META") else metadata,
++                "frames": None if os.environ.get("NUVLA_LAZY_META") else frames,
+             })
+ 
+     def _index_vqa(self) -> None:
+@@ -304,8 +330,13 @@ class NuReasoningVLADataset(Dataset):
+         clip_dir = info["clip_dir"]
+         frame_idx = info["frame_index"]
+         frames = info["frames"]
++        meta = info.get("metadata")
++        if frames is None:                       # NUVLA_LAZY_META
++            with open(os.path.join(clip_dir, "metadata.json"), "r") as f:
++                meta = json.load(f)
++            frames = meta.get("frames", [])
+         clip_frame_rate_hz = infer_clip_frame_rate_hz(
+-            info.get("metadata", {}),
++            meta or {},
+             frames,
+             self.config.frame_rate_hz,
+         )
+diff --git a/nureasoning/nuvla/models/vlm_backbone.py b/nureasoning/nuvla/models/vlm_backbone.py
+index 0ea16df..8a4550b 100644
+--- a/nureasoning/nuvla/models/vlm_backbone.py
++++ b/nureasoning/nuvla/models/vlm_backbone.py
+@@ -53,7 +53,9 @@ class VLMBackboneConfig:
+     history_resolution: Tuple[int, int] = (448, 448)
+     reasoning_format: str = "spatial_driving_counterfactual"
+     trust_remote_code: bool = True
+-    attn_implementation: str = "flash_attention_2"
++    # [amanupg] NUVLA_ATTN=sdpa where flash-attn is not installed: the load fallback
++    # below otherwise drops BOTH attn_implementation and dtype (fp32 -> 2x memory).
++    attn_implementation: str = os.environ.get("NUVLA_ATTN", "flash_attention_2")
+     torch_dtype: torch.dtype = torch.bfloat16
+ 
+ 
+diff --git a/nureasoning/nuvla/train.py b/nureasoning/nuvla/train.py
+index 49ddfe1..a39cf78 100644
+--- a/nureasoning/nuvla/train.py
++++ b/nureasoning/nuvla/train.py
+@@ -710,7 +710,7 @@ class VLATrainer:
+         self.vlm_optimizer.zero_grad()
+         self.action_optimizer.zero_grad()
+ 
+-        for epoch in range(args.epochs):
++        for epoch in range(getattr(self, "start_epoch", 0), args.epochs):
+             if self.train_sampler is not None:
+                 self.train_sampler.set_epoch(epoch)
+ 
+@@ -852,7 +852,9 @@ class VLATrainer:
+             self.vlm_scheduler.load_state_dict(state["vlm_scheduler"])
+             self.action_scheduler.load_state_dict(state["action_scheduler"])
+             self.global_step = state["global_step"]
+-            logger.info(f"Resumed from step {self.global_step}")
++            # [amanupg] continue the epoch loop after the saved epoch (it restarted at 1)
++            self.start_epoch = int(state.get("epoch", 0) or 0)
++            logger.info(f"Resumed from step {self.global_step}, epoch {self.start_epoch}")
+ 
+         if self.is_distributed:
+             dist.barrier()

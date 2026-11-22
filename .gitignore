@@ -1,0 +1,50 @@
+# --- never commit: dataset content (nuReasoning licence), secrets, environments ---
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.token
+*curl_auth*
+.cache/
+
+# raw / derived dataset content
+data/
+cache/
+a15_out/
+a15ft_out/
+vqa_train/
+vqa_train_sample/
+vqa_val/
+# organisers' devkit + scraped pages; our devkit changes live in patches/
+recon/
+
+# large or regenerable outputs
+logs/
+runs/
+runs_vla/
+runs_jepa/
+runs_handoff/
+submissions/*.json
+*.tar
+*.npz
+*.npy
+*.pkl
+*.pt
+*.partial.jsonl
+
+# artifacts: keep only small provenance files (selections, fitted geometry, priors)
+artifacts/*
+!artifacts/versioned/
+artifacts/versioned/*
+!artifacts/versioned/selections_*.json
+!artifacts/obj_center_z.json
+!artifacts/dist_geo.json
+!artifacts/answer_priors.json
+!artifacts/path_sources.json
+
+runs_fm/
+runs_dist/
+reasoning_ws/
+src/fm_members.json
+src/dist_members.json
+.env
